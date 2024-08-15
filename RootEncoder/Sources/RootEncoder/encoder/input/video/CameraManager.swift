@@ -21,6 +21,7 @@ public class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     var videoOutput: AVCaptureVideoDataOutput?
     var cameraView: UIView? = nil
     private var fpsLimiter = FpsLimiter()
+    private var captureOutputMiddleware: [CaptureOutputMiddleware] = []
 
     private var facing = CameraHelper.Facing.BACK
     //TODO fix use different resolution in startPreview and in prepareVideo
@@ -154,6 +155,12 @@ public class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if !fpsLimiter.limitFps() {
+            var sampleBuffer = sampleBuffer
+            if let session, !captureOutputMiddleware.isEmpty {
+                for middleware in captureOutputMiddleware where middleware.isActive {
+                    sampleBuffer = middleware.captureOutput(output, didOutput: sampleBuffer, from: connection, in: session)
+                }
+            }
             self.callback.getYUVData(from: sampleBuffer)
         }
     }
@@ -175,6 +182,18 @@ public class CameraManager: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     
     public func getCaptureSession() -> AVCaptureSession? {
         session
+    }
+    
+    public func registerCaptureOutputMiddleware(_ middleware: CaptureOutputMiddleware) {
+        if !captureOutputMiddleware.contains(where: { $0.identifier == middleware.identifier }) {
+            captureOutputMiddleware.append(middleware)
+        }
+    }
+    
+    public func unregisterCaptureOutputMiddleware(_ middleware: CaptureOutputMiddleware) {
+        if let index = captureOutputMiddleware.firstIndex(where: { $0.identifier == middleware.identifier }) {
+            captureOutputMiddleware.remove(at: index)
+        }
     }
     
 }
